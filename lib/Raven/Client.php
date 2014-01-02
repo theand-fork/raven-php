@@ -495,6 +495,7 @@ class Raven_Client
         foreach ($headers as $key => $value) {
             array_push($new_headers, $key .': '. $value);
         }
+        array_push($new_headers, 'Expect:');
         $curl = curl_init($url);
         curl_setopt($curl, CURLOPT_POST, 1);
         curl_setopt($curl, CURLOPT_HTTPHEADER, $new_headers);
