@@ -19,6 +19,10 @@ class Dummy_Raven_Client extends Raven_Client
     }
     public function send($data)
     {
+        if (is_callable($this->send_callback) && !call_user_func($this->send_callback, $data)) {
+            // if send_callback returns falsely, end native send
+            return;
+        }
         $this->__sent_events[] = $data;
     }
     public function is_http_request()
@@ -425,7 +429,7 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
         );
 
         $client = new Dummy_Raven_Client();
-        $this->assertEquals($client->get_http_data(), $expected);
+        $this->assertEquals($expected, $client->get_http_data());
     }
 
     public function testGetUserDataWithSetUser() {
@@ -448,7 +452,7 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
             )
         );
 
-        $this->assertEquals($client->get_user_data(), $expected);
+        $this->assertEquals($expected, $client->get_user_data());
     }
 
     public function testGetUserDataWithNoUser() {
@@ -459,7 +463,7 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
                 'id' => session_id(),
             )
         );
-        $this->assertEquals($client->get_user_data(), $expected);
+        $this->assertEquals($expected, $client->get_user_data());
     }
 
     public function testGetAuthHeader() {
@@ -471,7 +475,7 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
         $expected = "Sentry sentry_timestamp={$timestamp}, sentry_client={$clientstring}, " .
                     "sentry_version=4, sentry_key=publickey, sentry_secret=secretkey";
 
-        $this->assertEquals($client->get_auth_header($timestamp, 'raven-php/test', 'publickey', 'secretkey'), $expected);
+        $this->assertEquals($expected, $client->get_auth_header($timestamp, 'raven-php/test', 'publickey', 'secretkey'));
     }
 
     public function testCaptureMessageWithUserContext()
@@ -482,11 +486,11 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
 
         $client->captureMessage('test');
         $events = $client->getSentEvents();
-        $this->assertEquals(count($events), 1);
+        $this->assertEquals(1, count($events));
         $event = array_pop($events);
-        $this->assertEquals($event['sentry.interfaces.User'], array(
+        $this->assertEquals(array(
             'email' => 'foo@example.com',
-        ));
+        ), $event['sentry.interfaces.User']);
     }
 
     public function testCaptureMessageWithTagsContext()
@@ -499,12 +503,12 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
 
         $client->captureMessage('test');
         $events = $client->getSentEvents();
-        $this->assertEquals(count($events), 1);
+        $this->assertEquals(1, count($events));
         $event = array_pop($events);
-        $this->assertEquals($event['tags'], array(
+        $this->assertEquals(array(
             'foo' => 'bar',
             'biz' => 'baz',
-        ));
+        ), $event['tags']);
     }
 
     public function testCaptureMessageWithExtraContext()
@@ -517,12 +521,37 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
 
         $client->captureMessage('test');
         $events = $client->getSentEvents();
-        $this->assertEquals(count($events), 1);
+        $this->assertEquals(1, count($events));
         $event = array_pop($events);
-        $this->assertEquals($event['extra'], array(
+        $this->assertEquals(array(
             'foo' => 'bar',
             'biz' => 'baz',
-        ));
+        ), $event['extra']);
     }
 
+    public function cb1($data) {
+        $this->assertEquals('test', $data['message']);
+        return false;
+    }
+
+    public function cb2($data) {
+        $this->assertEquals('test', $data['message']);
+        return true;
+    }
+
+    public function testSendCallback()
+    {
+
+        $client = new Dummy_Raven_Client(array('send_callback' => array($this, 'cb1')));
+        $client->captureMessage('test');
+        $events = $client->getSentEvents();
+        $this->assertEquals(0, count($events));
+
+        $client = new Dummy_Raven_Client(array('send_callback' => array($this, 'cb2')));
+        $client->captureMessage('test');
+        $events = $client->getSentEvents();
+        $this->assertEquals(1, count($events));
+    }
 }
+
+

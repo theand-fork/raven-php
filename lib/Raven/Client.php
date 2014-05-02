@@ -63,6 +63,7 @@ class Raven_Client
         $this->shift_vars = (bool) Raven_Util::get($options, 'shift_vars', true);
         $this->http_proxy = Raven_Util::get($options, 'http_proxy');
         $this->extra_data = Raven_Util::get($options, 'extra', array());
+        $this->send_callback = Raven_Util::get($options, 'send_callback', null);
 
         $this->processors = array();
         foreach (Raven_util::get($options, 'processors', self::getDefaultProcessors()) as $processor) {
@@ -438,6 +439,11 @@ class Raven_Client
 
     public function send($data)
     {
+        if (is_callable($this->send_callback) && !call_user_func($this->send_callback, $data)) {
+            // if send_callback returns falsely, end native send
+            return;
+        }
+
         if (!$this->servers) {
             return;
         }
@@ -517,16 +523,16 @@ class Raven_Client
             curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, $timeout);
             curl_setopt($curl, CURLOPT_TIMEOUT, $timeout);
         }
-        $ret = curl_exec($curl);
+        curl_exec($curl);
         $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $success = ($code == 200);
-        curl_close($curl);
         if (!$success) {
             // It'd be nice just to raise an exception here, but it's not very PHP-like
-            $this->_lasterror = $ret;
+            $this->_lasterror = curl_error($curl);
         } else {
             $this->_lasterror = null;
         }
+        curl_close($curl);
 
         return $success;
     }

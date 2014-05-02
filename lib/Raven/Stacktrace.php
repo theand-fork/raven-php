@@ -128,6 +128,9 @@ class Raven_Stacktrace
         if (strpos($frame['function'], '__lambda_func') !== false) {
             return array();
         }
+        if (isset($frame['class']) && $frame['class'] == 'Closure') {
+            return array();
+        }
         if (strpos($frame['function'], '{closure}') !== false) {
             return array();
         }
@@ -158,6 +161,13 @@ class Raven_Stacktrace
         foreach ($frame['args'] as $i => $arg) {
             if (isset($params[$i])) {
                 // Assign the argument by the parameter name
+                if (is_array($arg)) {
+                  foreach ($arg as $key => $value) {
+                    if (!is_array($value) and ! is_object($value)) {
+                      $arg[$key] = substr($value, 0, 1024);
+                    }
+                  }
+                }
                 $args[$params[$i]->name] = $arg;
             } else {
                 // TODO: Sentry thinks of these as context locals, so they must be named
