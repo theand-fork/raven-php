@@ -54,6 +54,19 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
         }
     }
 
+    private function create_chained_exception()
+    {
+        try {
+            throw new Exception('Foo bar');
+        } catch (Exception $ex) {
+            try {
+                throw new Exception('Child exc', 0, $ex);
+            } catch (Exception $ex2) {
+                return $ex2;
+            }
+        }
+    }
+
     public function testParseDsnHttp()
     {
         $result = Raven_Client::parseDsn('http://public:secret@example.com/1');
@@ -268,12 +281,13 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
         $event = array_pop($events);
 
         $exc = $event['sentry.interfaces.Exception'];
-        $this->assertEquals($exc['value'], 'Foo bar');
-        $this->assertEquals($exc['type'], 'Exception');
-        $this->assertFalse(empty($exc['module']));
+        $this->assertEquals(count($exc['values']), 1);
+        $this->assertEquals($exc['values'][0]['value'], 'Foo bar');
+        $this->assertEquals($exc['values'][0]['type'], 'Exception');
+        $this->assertFalse(empty($exc['values'][0]['module']));
 
-        $this->assertFalse(empty($event['sentry.interfaces.Stacktrace']['frames']));
-        $frames = $event['sentry.interfaces.Stacktrace']['frames'];
+        $this->assertFalse(empty($exc['values'][0]['stacktrace']['frames']));
+        $frames = $exc['values'][0]['stacktrace']['frames'];
         $frame = $frames[count($frames) - 1];
         $this->assertTrue($frame['lineno'] > 0);
         $this->assertEquals($frame['module'], 'ClientTest.php:Raven_Tests_ClientTest');
@@ -282,6 +296,28 @@ class Raven_Tests_ClientTest extends PHPUnit_Framework_TestCase
         $this->assertEquals($frame['context_line'], '            throw new Exception(\'Foo bar\');');
         $this->assertFalse(empty($frame['pre_context']));
         $this->assertFalse(empty($frame['post_context']));
+    }
+
+    public function testCaptureExceptionChainedException()
+    {
+        if (version_compare(PHP_VERSION, '5.3.0', '<')) {
+            $this->markTestSkipped('PHP 5.3 required for chained exceptions.');
+        }
+
+        # TODO: it'd be nice if we could mock the stacktrace extraction function here
+        $client = new Dummy_Raven_Client();
+        $ex = $this->create_chained_exception();
+        $client->captureException($ex);
+
+        $events = $client->getSentEvents();
+        $this->assertEquals(count($events), 1);
+        $event = array_pop($events);
+
+        $exc = $event['sentry.interfaces.Exception'];
+        $this->assertEquals(count($exc['values']), 2);
+        $this->assertEquals($exc['values'][0]['value'], 'Foo bar');
+        $this->assertEquals($exc['values'][1]['value'], 'Child exc');
+
     }
 
     public function testCaptureExceptionHandlesOptionsAsSecondArg()
