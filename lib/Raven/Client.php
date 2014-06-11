@@ -16,8 +16,8 @@
 
 class Raven_Client
 {
-    const VERSION = '0.8.0';
-    const PROTOCOL = '4';
+    const VERSION = '0.9.0';
+    const PROTOCOL = '5';
 
     const DEBUG = 'debug';
     const INFO = 'info';
@@ -64,6 +64,8 @@ class Raven_Client
         $this->http_proxy = Raven_Util::get($options, 'http_proxy');
         $this->extra_data = Raven_Util::get($options, 'extra', array());
         $this->send_callback = Raven_Util::get($options, 'send_callback', null);
+        $this->curl_method = Raven_Util::get($options, 'curl_method', 'async');
+        $this->curl_path = Raven_Util::get($options, 'curl_path', 'curl');
 
         $this->processors = array();
         foreach (Raven_util::get($options, 'processors', self::getDefaultProcessors()) as $processor) {
@@ -73,6 +75,10 @@ class Raven_Client
         $this->_lasterror = null;
         $this->_user = null;
         $this->context = new Raven_Context();
+
+        if ($this->curl_method == 'async') {
+            $this->_curl_handler = new Raven_CurlHandler($this->get_curl_options());
+        }
     }
 
     public static function getDefaultProcessors()
@@ -471,8 +477,9 @@ class Raven_Client
         $message = Raven_Compat::json_encode($data);
 
         if (function_exists("gzcompress")) {
-            $message = base64_encode(gzcompress($message));
+            $message = gzcompress($message);
         }
+        $message = base64_encode($message); // PHP's builtin curl_* function are happy without this, but the exec method requires it
 
         foreach ($this->servers as $url) {
             $client_string = 'raven-php/' . self::VERSION;
@@ -512,37 +519,75 @@ class Raven_Client
         return true;
     }
 
+    private function get_curl_options(){
+        $options = array(
+            CURLOPT_VERBOSE => false,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+        );
+        if ($this->http_proxy) {
+            $options[CURLOPT_PROXY] = $this->http_proxy;
+        }
+        if (defined('CURLOPT_TIMEOUT_MS')) {
+            // MS is available in curl >= 7.16.2
+            $timeout = max(1, ceil(1000 * $this->timeout));
+            $options[CURLOPT_CONNECTTIMEOUT_MS] = $timeout;
+            $options[CURLOPT_TIMEOUT_MS] = $timeout;
+        } else {
+            // fall back to the lower-precision timeout.
+            $timeout = max(1, ceil($this->timeout));
+            $options[CURLOPT_CONNECTTIMEOUT] = $timeout;
+            $options[CURLOPT_TIMEOUT] = $timeout;
+        }
+        return $options;
+    }
+
     /**
      * Send the message over http to the sentry url given
      */
     private function send_http($url, $data, $headers=array())
+    {
+        if ($this->curl_method == 'async') {
+            $this->_curl_handler->enqueue($url, $data, $headers);
+        } elseif ($this->curl_method == 'exec') {
+            $this->send_http_asynchronous_exec($url, $data, $headers);
+        } else {
+            $this->send_http_synchronous($url, $data, $headers);
+        }
+    }
+
+    private function send_http_asynchronous_curl_exec($url, $data, $headers) {
+        $cmd = $this->curl_path.' -X POST ';
+        foreach ($headers as $key => $value) {
+            $cmd .= '-H \''. $key. ': '. $value. '\' ';
+        }
+        $cmd .= '-d \''. $data .'\' ';
+        $cmd .= '\''. $url .'\' ';
+        $cmd .= '-m 5 ';  // 5 second timeout for the whole process (connect + send)
+        $cmd .= '> /dev/null 2>&1 &'; // ensure exec returns immediately while curl runs in the background
+
+        exec($cmd);
+
+        return true; // The exec method is just fire and forget, so just assume it always works
+    }
+
+    private function send_http_synchronous($url, $data, $headers)
     {
         $new_headers = array();
         foreach ($headers as $key => $value) {
             array_push($new_headers, $key .': '. $value);
         }
         array_push($new_headers, 'Expect:');
+
         $curl = curl_init($url);
         curl_setopt($curl, CURLOPT_POST, 1);
         curl_setopt($curl, CURLOPT_HTTPHEADER, $new_headers);
         curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-        curl_setopt($curl, CURLOPT_VERBOSE, false);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
-        if ($this->http_proxy) {
-            curl_setopt($curl, CURLOPT_PROXY, $this->http_proxy);
-        }
-        if (defined('CURLOPT_TIMEOUT_MS')) {
-            // MS is available in curl >= 7.16.2
-            $timeout = max(1, ceil(1000 * $this->timeout));
-            curl_setopt($curl, CURLOPT_CONNECTTIMEOUT_MS, $timeout);
-            curl_setopt($curl, CURLOPT_TIMEOUT_MS, $timeout);
-        } else {
-            // fall back to the lower-precision timeout.
-            $timeout = max(1, ceil($this->timeout));
-            curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, $timeout);
-            curl_setopt($curl, CURLOPT_TIMEOUT, $timeout);
-        }
+
+        $options = $this->get_curl_options();
+        curl_setopt_array($curl, $options);
+
         curl_exec($curl);
         $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $success = ($code == 200);
