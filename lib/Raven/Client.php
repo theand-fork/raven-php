@@ -16,7 +16,7 @@
 
 class Raven_Client
 {
-    const VERSION = '0.10.0';
+    const VERSION = '0.11.0';
     const PROTOCOL = '5';
 
     const DEBUG = 'debug';
@@ -58,6 +58,7 @@ class Raven_Client
         $this->name = Raven_Util::get($options, 'name', Raven_Compat::gethostname());
         $this->site = Raven_Util::get($options, 'site', $this->_server_variable('SERVER_NAME'));
         $this->tags = Raven_Util::get($options, 'tags', array());
+        $this->release = Raven_util::get($options, 'release', null);
         $this->trace = (bool) Raven_Util::get($options, 'trace', true);
         $this->timeout = Raven_Util::get($options, 'timeout', 2);
         $this->message_limit = Raven_Util::get($options, 'message_limit', self::MESSAGE_LIMIT);
@@ -150,7 +151,7 @@ class Raven_Client
         }
 
         return array(
-            'servers'    => array(sprintf('%s://%s%s/api/store/', $scheme, $netloc, $path)),
+            'servers'    => array(sprintf('%s://%s%s/api/%s/store/', $scheme, $netloc, $path, $project)),
             'project'    => $project,
             'public_key' => $username,
             'secret_key' => $password,
@@ -423,6 +424,10 @@ class Raven_Client
         }
 
         $data = array_merge($this->get_user_data(), $data);
+
+        if ($this->release) {
+            $data['release'] = $this->release;
+        }
 
         $data['tags'] = array_merge(
             $this->tags,
@@ -782,7 +787,12 @@ class Raven_Client
         $schema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'
             || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 
-        return $schema . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+        // HTTP_HOST is a client-supplied header that is optional in HTTP 1.0
+        $host = (!empty($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST']
+            : (!empty($_SERVER['LOCAL_ADDR'])  ? $_SERVER['LOCAL_ADDR']
+            : (!empty($_SERVER['SERVER_ADDR']) ? $_SERVER['SERVER_ADDR'] : '')));
+
+        return $schema . $host . $_SERVER['REQUEST_URI'];
     }
 
     /**
