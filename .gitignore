@@ -2,4 +2,4 @@
 package.xml
 /vendor
 .idea
-bin/phpunit
+.php_cs.cache

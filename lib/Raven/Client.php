@@ -16,8 +16,8 @@
 
 class Raven_Client
 {
-    const VERSION = '0.11.0';
-    const PROTOCOL = '5';
+    const VERSION = '0.12.0';
+    const PROTOCOL = '6';
 
     const DEBUG = 'debug';
     const INFO = 'info';
@@ -28,10 +28,10 @@ class Raven_Client
 
     const MESSAGE_LIMIT = 1024;
 
-    var $severity_map;
-    var $extra_data;
+    public $severity_map;
+    public $extra_data;
 
-    var $store_errors_for_bulk_send = false;
+    public $store_errors_for_bulk_send = false;
 
     public function __construct($options_or_dsn=null, $options=array())
     {
@@ -63,7 +63,7 @@ class Raven_Client
         $this->timeout = Raven_Util::get($options, 'timeout', 2);
         $this->message_limit = Raven_Util::get($options, 'message_limit', self::MESSAGE_LIMIT);
         $this->exclude = Raven_Util::get($options, 'exclude', array());
-        $this->severity_map = NULL;
+        $this->severity_map = null;
         $this->shift_vars = (bool) Raven_Util::get($options, 'shift_vars', true);
         $this->http_proxy = Raven_Util::get($options, 'http_proxy');
         $this->extra_data = Raven_Util::get($options, 'extra', array());
@@ -73,7 +73,7 @@ class Raven_Client
         $this->curl_ipv4 = Raven_util::get($options, 'curl_ipv4', true);
         $this->ca_cert = Raven_util::get($options, 'ca_cert', $this->get_default_ca_cert());
         $this->verify_ssl = Raven_util::get($options, 'verify_ssl', true);
-		$this->curl_ssl_version = Raven_Util::get($options, 'curl_ssl_version');
+        $this->curl_ssl_version = Raven_Util::get($options, 'curl_ssl_version');
 
         $this->processors = $this->setProcessorsFromOptions($options);
 
@@ -100,13 +100,14 @@ class Raven_Client
      * @param $options
      * @return array
      */
-    public function setProcessorsFromOptions($options){
+    public function setProcessorsFromOptions($options)
+    {
         $processors = array();
         foreach (Raven_util::get($options, 'processors', self::getDefaultProcessors()) as $processor) {
             $new_processor = new $processor($this);
 
-            if( isset($options['processorOptions']) && is_array($options['processorOptions']) ){
-                if( isset($options['processorOptions'][$processor]) && method_exists($processor, 'setProcessorOptions') ){
+            if (isset($options['processorOptions']) && is_array($options['processorOptions'])) {
+                if (isset($options['processorOptions'][$processor]) && method_exists($processor, 'setProcessorOptions')) {
                     $new_processor->setProcessorOptions($options['processorOptions'][$processor]);
                 }
             }
@@ -125,7 +126,7 @@ class Raven_Client
     {
         $url = parse_url($dsn);
         $scheme = (isset($url['scheme']) ? $url['scheme'] : '');
-        if (!in_array($scheme, array('http', 'https', 'udp'))) {
+        if (!in_array($scheme, array('http', 'https'))) {
             throw new InvalidArgumentException('Unsupported Sentry DSN scheme: ' . (!empty($scheme) ? $scheme : '<not set>'));
         }
         $netloc = (isset($url['host']) ? $url['host'] : null);
@@ -205,7 +206,7 @@ class Raven_Client
 
         if ($level_or_options === null) {
             $data = array();
-        } else if (!is_array($level_or_options)) {
+        } elseif (!is_array($level_or_options)) {
             $data = array(
                 'level' => $level_or_options,
             );
@@ -280,7 +281,6 @@ class Raven_Client
             );
 
             $exceptions[] = $exc_data;
-
         } while ($has_chained_exceptions && $exc = $exc->getPrevious());
 
         $data['message'] = $message;
@@ -407,11 +407,21 @@ class Raven_Client
 
     public function capture($data, $stack, $vars = null)
     {
-        if (!isset($data['timestamp'])) $data['timestamp'] = gmdate('Y-m-d\TH:i:s\Z');
-        if (!isset($data['level'])) $data['level'] = self::ERROR;
-        if (!isset($data['tags'])) $data['tags'] = array();
-        if (!isset($data['extra'])) $data['extra'] = array();
-        if (!isset($data['event_id'])) $data['event_id'] = $this->uuid4();
+        if (!isset($data['timestamp'])) {
+            $data['timestamp'] = gmdate('Y-m-d\TH:i:s\Z');
+        }
+        if (!isset($data['level'])) {
+            $data['level'] = self::ERROR;
+        }
+        if (!isset($data['tags'])) {
+            $data['tags'] = array();
+        }
+        if (!isset($data['extra'])) {
+            $data['extra'] = array();
+        }
+        if (!isset($data['event_id'])) {
+            $data['event_id'] = $this->uuid4();
+        }
 
         if (isset($data['message'])) {
             $data['message'] = substr($data['message'], 0, $this->message_limit);
@@ -439,7 +449,7 @@ class Raven_Client
             $this->context->extra,
             $data['extra']);
 
-        if ((!$stack && $this->auto_log_stacks) || $stack === True) {
+        if ((!$stack && $this->auto_log_stacks) || $stack === true) {
             $stack = debug_backtrace();
 
             // Drop last stack
@@ -464,10 +474,10 @@ class Raven_Client
         $this->sanitize($data);
         $this->process($data);
 
-        if(!$this->store_errors_for_bulk_send){
+        if (!$this->store_errors_for_bulk_send) {
             $this->send($data);
-        }else{
-            if(empty($this->error_data)){
+        } else {
+            if (empty($this->error_data)) {
                 $this->error_data = array();
             }
             $this->error_data[] = $data;
@@ -498,14 +508,15 @@ class Raven_Client
         }
     }
 
-    public function sendUnsentErrors(){
-        if(!empty($this->error_data)){
-            foreach($this->error_data as $data){
+    public function sendUnsentErrors()
+    {
+        if (!empty($this->error_data)) {
+            foreach ($this->error_data as $data) {
                 $this->send($data);
             }
             unset($this->error_data);
         }
-        if($this->store_errors_for_bulk_send){
+        if ($this->store_errors_for_bulk_send) {
             //in case an error occurs after this is called, on shutdown, send any new errors.
             $this->store_errors_for_bulk_send = !defined('RAVEN_CLIENT_END_REACHED');
         }
@@ -560,33 +571,11 @@ class Raven_Client
     {
         $parts = parse_url($url);
         $parts['netloc'] = $parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : null);
-
-        if ($parts['scheme'] === 'udp') {
-            $this->send_udp($parts['netloc'], $data, $headers['X-Sentry-Auth']);
-        }
-        else {
-            $this->send_http($url, $data, $headers);
-        }
+        $this->send_http($url, $data, $headers);
     }
 
-    /**
-     * Send data to Sentry via udp socket
-     *
-     * @param string    $netloc     host:port || host
-     * @param array     $data       Associative array of data to log
-     * @param array     $headers    Associative array of headers
-     */
-    private function send_udp($netloc, $data, $headers)
+    protected function get_default_ca_cert()
     {
-        list($host, $port) = explode(':', $netloc);
-        $raw_data = $headers."\n\n".$data;
-
-        $sock = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
-        socket_sendto($sock, $raw_data, strlen($raw_data), 0, $host, $port);
-        socket_close($sock);
-    }
-
-    protected function get_default_ca_cert() {
         return dirname(__FILE__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'cacert.pem';
     }
 
@@ -603,7 +592,7 @@ class Raven_Client
             $options[CURLOPT_PROXY] = $this->http_proxy;
         }
         if ($this->curl_ssl_version) {
-	        $options[CURLOPT_SSLVERSION] = $this->curl_ssl_version;
+            $options[CURLOPT_SSLVERSION] = $this->curl_ssl_version;
         }
         if ($this->curl_ipv4) {
             $options[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
@@ -611,6 +600,13 @@ class Raven_Client
         if (defined('CURLOPT_TIMEOUT_MS')) {
             // MS is available in curl >= 7.16.2
             $timeout = max(1, ceil(1000 * $this->timeout));
+
+            // some versions of PHP 5.3 don't have this defined correctly
+            if (!defined('CURLOPT_CONNECTTIMEOUT_MS')) {
+                //see http://stackoverflow.com/questions/9062798/php-curl-timeout-is-not-working/9063006#9063006
+                define('CURLOPT_CONNECTTIMEOUT_MS', 156);
+            }
+
             $options[CURLOPT_CONNECTTIMEOUT_MS] = $timeout;
             $options[CURLOPT_TIMEOUT_MS] = $timeout;
         } else {
@@ -648,7 +644,8 @@ class Raven_Client
      * @param array     $headers    Associative array of headers
      * @return bool
      */
-    private function send_http_asynchronous_curl_exec($url, $data, $headers) {
+    private function send_http_asynchronous_curl_exec($url, $data, $headers)
+    {
         // TODO(dcramer): support ca_cert
         $cmd = $this->curl_path.' -X POST ';
         foreach ($headers as $key => $value) {
@@ -678,7 +675,8 @@ class Raven_Client
         foreach ($headers as $key => $value) {
             array_push($new_headers, $key .': '. $value);
         }
-        array_push($new_headers, 'Expect:');
+        // XXX(dcramer): Prevent 100-continue response form server (Fixes GH-216)
+        $new_headers[] = 'Expect:';
 
         $curl = curl_init($url);
         curl_setopt($curl, CURLOPT_POST, 1);
@@ -751,22 +749,22 @@ class Raven_Client
     {
         $uuid = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
             // 32 bits for "time_low"
-            mt_rand( 0, 0xffff ), mt_rand( 0, 0xffff ),
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
 
             // 16 bits for "time_mid"
-            mt_rand( 0, 0xffff ),
+            mt_rand(0, 0xffff),
 
             // 16 bits for "time_hi_and_version",
             // four most significant bits holds version number 4
-            mt_rand( 0, 0x0fff ) | 0x4000,
+            mt_rand(0, 0x0fff) | 0x4000,
 
             // 16 bits, 8 bits for "clk_seq_hi_res",
             // 8 bits for "clk_seq_low",
             // two most significant bits holds zero and one for variant DCE1.1
-            mt_rand( 0, 0x3fff ) | 0x8000,
+            mt_rand(0, 0x3fff) | 0x8000,
 
             // 48 bits for "node"
-            mt_rand( 0, 0xffff ), mt_rand( 0, 0xffff ), mt_rand( 0, 0xffff )
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
         );
 
         return str_replace('-', '', $uuid);
@@ -816,7 +814,8 @@ class Raven_Client
      * @param string $severity  PHP E_$x error constant
      * @return string           Sentry log level group
      */
-    public function translateSeverity($severity) {
+    public function translateSeverity($severity)
+    {
         if (is_array($this->severity_map) && isset($this->severity_map[$severity])) {
             return $this->severity_map[$severity];
         }
@@ -836,7 +835,7 @@ class Raven_Client
             case E_RECOVERABLE_ERROR:  return Raven_Client::ERROR;
         }
         if (version_compare(PHP_VERSION, '5.3.0', '>=')) {
-          switch ($severity) {
+            switch ($severity) {
             case E_DEPRECATED:         return Raven_Client::WARN;
             case E_USER_DEPRECATED:    return Raven_Client::WARN;
           }
@@ -850,7 +849,8 @@ class Raven_Client
      *
      * @param array $map
      */
-    public function registerSeverityMap($map) {
+    public function registerSeverityMap($map)
+    {
         $this->severity_map = $map;
     }
 
@@ -861,7 +861,8 @@ class Raven_Client
      * @param string|null $email    User's email
      * @param array $data           Additional user data
      */
-    public function set_user_data($id, $email=null, $data=array()) {
+    public function set_user_data($id, $email=null, $data=array())
+    {
         $this->user_context(array_merge(array(
             'id'    => $id,
             'email' => $email,
@@ -873,7 +874,8 @@ class Raven_Client
      *
      * @param array $data   Associative array of user data
      */
-    public function user_context($data) {
+    public function user_context($data)
+    {
         $this->context->user = $data;
     }
 
@@ -882,7 +884,8 @@ class Raven_Client
      *
      * @param array $data   Associative array of tags
      */
-    public function tags_context($data) {
+    public function tags_context($data)
+    {
         $this->context->tags = array_merge($this->context->tags, $data);
     }
 
@@ -891,14 +894,16 @@ class Raven_Client
      *
      * @param array $data   Associative array of extra data
      */
-    public function extra_context($data) {
+    public function extra_context($data)
+    {
         $this->context->extra = array_merge($this->context->extra, $data);
     }
 
     /**
      * @param array $processors
      */
-    public function setProcessors(array $processors){
+    public function setProcessors(array $processors)
+    {
         $this->processors = $processors;
     }
 }
